@@ -805,8 +805,10 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 #'   Taylor, and C. M. Ringle (2025). Dealing with regression models'
 #'   endogeneity by means of an adjusted estimator for the Gaussian copula
 #'   approach. *Journal of the Academy of Marketing Science* 53, 279–299.
-#' @importFrom dplyr filter mutate select sample_n
+#' @importFrom dplyr filter mutate select sample_n all_of
 #' @importFrom magrittr %>%
+#' @importFrom stats as.formula cor ecdf lm model.matrix na.omit predict qnorm sd terms
+#' @importFrom Matrix rankMatrix
 #' @rdname CopRegJAMS
 #' @export
 CopRegJAMS <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"),

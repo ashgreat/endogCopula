@@ -43,3 +43,12 @@ summary(fit)
 
 Please consult the documentation of each estimator (e.g. `?CopRegIMA`) for
 assumptions, references, and further examples.
+
+## Optional estimators
+
+Panel and Bayesian estimators now live in dedicated packages:
+
+- `endogCopulaPanel` for the fixed-effects panel model (`CopRegML_par`).
+- `endogCopulaBayes` for the Bayesian sampler (`CopRegBayes`).
+
+Install them alongside `endogCopula` to enable the delegated wrappers.

@@ -12,12 +12,7 @@ estimators from Park and Gupta (2012), Yang et al. (2025), Hu et al. (2025),
 Breitung et al. (2024), Haschka (2024), and Liengaard et al. (2025).
 }
 \author{
-\strong{Maintainer}: Aniket Malshe \email{maintainer@example.com}
-
-Other contributors:
-\itemize{
-  \item Codex Assistant [contributor]
-}
+\strong{Maintainer}: Ashwin Malshe \email{ashwin@malshe.com}
 
 }
 \keyword{internal}

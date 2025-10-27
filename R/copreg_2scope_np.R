@@ -94,10 +94,13 @@ scope_np_fit <- function(data, components, original_formula, cdf) {
     }
     regressors <- setdiff(colnames(design_no_intercept), endog)
 
-    if (!requireNamespace("np", quietly = TRUE)) {
+    pkg_np <- "np"
+    if (!requireNamespace(pkg_np, quietly = TRUE)) {
       stop("The 'np' package is required for CopReg2sCOPEnp with exogenous regressors.",
            call. = FALSE)
     }
+    np_npcdistbw <- getExportedValue(pkg_np, "npcdistbw")
+    np_npcdist <- getExportedValue(pkg_np, "npcdist")
     P_star <- matrix(NA_real_, nrow = nrow(design_no_intercept), ncol = length(endog))
     colnames(P_star) <- endog
     df_full <- as.data.frame(full_matrix)
@@ -107,8 +110,8 @@ scope_np_fit <- function(data, components, original_formula, cdf) {
       if (ncol(xdat) == 0) {
         stop("At least one exogenous regressor is required for the nonparametric estimator.", call. = FALSE)
       }
-      bw <- np::npcdistbw(ydat = df_full[p_var], xdat = xdat)
-      cdf_eval <- np::npcdist(bws = bw)
+      bw <- np_npcdistbw(ydat = df_full[p_var], xdat = xdat)
+      cdf_eval <- np_npcdist(bws = bw)
       P_star[, j] <- cdf_eval$condist
     }
 

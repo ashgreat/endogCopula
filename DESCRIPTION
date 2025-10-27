@@ -2,7 +2,8 @@ Package: endogCopula
 Type: Package
 Title: Endogeneity Corrections via Gaussian Copulas
 Version: 0.0.0.9000
-Authors@R: person(given = "Ashwin", family = "Malshe", role = c("aut", "cre"))
+Authors@R: person(given = "Ashwin", family = "Malshe", role = c("aut", "cre"),
+    email = "ashwin@malshe.com")
 Description: Implements Gaussian copula based estimators for handling endogeneity in linear models, including
     approaches by Park and Gupta (2012), Yang et al. (2025), Hu et al. (2025), Breitung et al. (2024), Haschka (2024),
     Liengaard et al. (2025), and related panel and Bayesian formulations. The package provides tools to estimate
@@ -17,13 +18,9 @@ Imports: Matrix,
          rlang,
          stats
 Suggests: ks,
-          np,
           testthat (>= 3.0.0),
           knitr,
-          rmarkdown,
-          AER,
-          ISLR,
-          bayesm
+          rmarkdown
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)

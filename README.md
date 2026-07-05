@@ -4,6 +4,8 @@
 [![R-CMD-check](https://github.com/ashgreat/endogCopula/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/ashgreat/endogCopula/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
+Package website: <https://ashgreat.github.io/endogCopula/>
+
 `endogCopula` provides instrument-free, Gaussian copula based corrections for
 endogenous regressors in linear models. It unifies six recently published
 cross-sectional estimators -- Park and Gupta (2012), Yang et al. (2025), Hu

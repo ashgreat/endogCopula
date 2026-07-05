@@ -1,0 +1,67 @@
+url: https://ashgreat.github.io/endogCopula/
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [related, github]
+  components:
+    related:
+      text: Related packages
+      menu:
+        - text: endogCopulaPanel (panel)
+          href: https://ashgreat.github.io/endogCopulaPanel/
+        - text: endogCopulaBayes (Bayesian)
+          href: https://ashgreat.github.io/endogCopulaBayes/
+    github:
+      icon: fab fa-github fa-lg
+      href: https://github.com/ashgreat/endogCopula
+      aria-label: GitHub
+
+reference:
+  - title: Package overview
+    desc: >
+      Overview of the endogCopula package.
+    contents:
+      - endogCopula-package
+
+  - title: Cross-sectional copula estimators
+    desc: >
+      Gaussian copula based endogeneity corrections for cross-sectional
+      linear models.
+    contents:
+      - CopRegPG
+      - CopReg2sCOPE
+      - CopReg2sCOPEnp
+      - CopRegBMW
+      - CopRegIMA
+      - CopRegJAMS
+
+  - title: Panel and Bayesian estimators (delegated)
+    desc: >
+      Thin wrappers that dispatch to the companion endogCopulaPanel and
+      endogCopulaBayes packages.
+    contents:
+      - CopRegML_par
+      - CopRegBayes
+
+  - title: Methods
+    desc: >
+      Methods for objects returned by the copula estimators.
+    contents:
+      - print.endog_copula_fit
+      - summary.endog_copula_fit
+      - confint.endog_copula_fit
+
+  - title: Data
+    desc: >
+      Simulated data used in examples and the vignette.
+    contents:
+      - sim_endog
+
+articles:
+  - title: Articles
+    contents:
+      - endogCopula

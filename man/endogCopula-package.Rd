@@ -29,6 +29,7 @@ delegate to them when those packages are installed.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://ashgreat.github.io/endogCopula/}
   \item \url{https://github.com/ashgreat/endogCopula}
   \item Report bugs at \url{https://github.com/ashgreat/endogCopula/issues}
 }

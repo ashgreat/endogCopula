@@ -115,6 +115,6 @@ if (requireNamespace("np", quietly = TRUE)) {
   coef(fit_np)
 }
 #> `(Intercept)`       z_endog        x_exog   z_endog_cop 
-#>     0.9153671    -2.1121332     1.5464786     4.6185622 
+#>     0.9153671    -2.1121331     1.5464786     4.6185621 
 # }
 ```

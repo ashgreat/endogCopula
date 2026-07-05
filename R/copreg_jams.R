@@ -1,19 +1,19 @@
-# Bootstrap functions
-boots1 <- function(formula, data_cleaned, dependent_var, independent_vars,
-                   has_intercept, X, cdf) {
+# Bootstrap fit functions ------------------------------------------------
+#
+# Each function computes the CopRegJAMS point estimates on a (resampled)
+# data.frame and returns the named coefficient vector. They mirror the
+# boots1(), boots_JAMS1() and boots_JAMS2() functions of the reference
+# implementation, except that resampling and retrying degenerate draws is
+# delegated to bootstrap_estimates() in utils.R, which keeps the bootstrap
+# output deterministic in shape.
 
-  data <- data_cleaned
+jams_boot_no_exog <- function(data_cleaned, formula, dependent_var,
+                              has_intercept, cdf) {
 
-  repeat {
-
-    data_cleaned <- data %>%
-      sample_n(size = nrow(data), replace = TRUE)
-    design_matrix <- model.matrix(formula, data = data_cleaned)
-    YP <- t(as.matrix(design_matrix))%*%as.matrix(design_matrix)
-    rank_A <- Matrix::rankMatrix(YP)[1]
-
-    if (rank_A == ncol(design_matrix)) { break }
-
+  design_matrix <- model.matrix(formula, data = data_cleaned)
+  YP <- t(as.matrix(design_matrix)) %*% as.matrix(design_matrix)
+  if (Matrix::rankMatrix(YP)[1] != ncol(design_matrix)) {
+    stop("Bootstrap design matrix is rank deficient", call. = FALSE)
   }
 
   if (!has_intercept) { full_matrix <- model.matrix(~ . - 1, data = data_cleaned) } else {
@@ -22,34 +22,7 @@ boots1 <- function(formula, data_cleaned, dependent_var, independent_vars,
   # endogenous regressor(s)
   if (has_intercept) { P1 <- design_matrix[, -1] } else { P1 <- design_matrix }
   P1 <- as.matrix(P1)
-  P_star1 <- matrix(NA, nrow = nrow(P1), ncol = ncol(P1))
-
-  if (cdf == "kde") {
-
-    for (i in 1:ncol(P1)) {
-      Fhat <- ks::kcde(P1[, i])
-      P_star1[, i] <- predict(Fhat, x = P1[, i])
-    }
-
-  } else if (cdf == "resc.ecdf") {
-
-    P_star1 <- apply(P1, 2, pseudo_observations)
-
-  } else if (cdf == "adj.ecdf") {
-
-    P_star1 <- apply(P1, 2, adjusted_pobs)
-
-  } else if (cdf == "ecdf") {
-
-    ecdf0 <- apply(P1, 2, ecdf)
-    for (i in 1:ncol(P1)) {
-      Fhat <- ecdf0[[i]]
-      P_star1[, i] <- Fhat(P1[, i])
-      P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-      P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-    }
-
-  }
+  P_star1 <- cdf_transform(P1, cdf)
 
   # rename columns of P_star matrix
   colnames(P_star1) <- paste0(colnames(P1), "_cop")
@@ -61,67 +34,33 @@ boots1 <- function(formula, data_cleaned, dependent_var, independent_vars,
   mod1 <- lm(as.formula(paste(dependent_var, "~ . -", dependent_var, "- 1")),
              data = as.data.frame(est_matrix))
 
-  Estimates <- mod1$coefficients
-  return(Estimates)
+  mod1$coefficients
 
 }
-boots_JAMS1 <- function(formula, data_cleaned, dependent_var, independent_P_vars,
-                        independent_X_vars, has_intercept, X, cdf,
-                        design_matrix1, full_formula) {
 
-  data <- data_cleaned
+jams_boot_continuous <- function(data_cleaned, full_formula, dependent_var,
+                                 independent_P_vars, has_intercept, cdf,
+                                 design_matrix1) {
 
-  repeat {
-
-    data_cleaned <- data %>%
-      sample_n(size = nrow(data), replace = TRUE)
-    design_matrix <- model.matrix(full_formula, data = data_cleaned)
-    YP <- t(as.matrix(design_matrix))%*%as.matrix(design_matrix)
-    rank_A <- Matrix::rankMatrix(YP)[1]
-
-    if (rank_A == ncol(design_matrix) &
-        all(colnames(design_matrix1) %in% colnames(design_matrix))) { break }
-
+  design_matrix <- model.matrix(full_formula, data = data_cleaned)
+  YP <- t(as.matrix(design_matrix)) %*% as.matrix(design_matrix)
+  rank_A <- Matrix::rankMatrix(YP)[1]
+  if (!(rank_A == ncol(design_matrix) &&
+        all(colnames(design_matrix1) %in% colnames(design_matrix)))) {
+    stop("Bootstrap design matrix is rank deficient", call. = FALSE)
   }
 
   full_matrix <- cbind(data_cleaned[[all.vars(full_formula)[1]]], design_matrix)
   colnames(full_matrix)[1] <- all.vars(full_formula)[1]
 
   if (has_intercept) { P1 <- design_matrix[, -1] } else { P1 <- design_matrix }
-  P_star1 <- matrix(NA, nrow = nrow(P1), ncol = ncol(P1))
-
-  if (cdf == "kde") {
-
-    for (i in 1:ncol(P1)) {
-      Fhat <- ks::kcde(P1[, i])
-      P_star1[, i] <- predict(Fhat, x = P1[, i])
-    }
-
-  } else if (cdf == "resc.ecdf") {
-
-    P_star1 <- apply(P1, 2, pseudo_observations)
-
-  } else if (cdf == "adj.ecdf") {
-
-    P_star1 <- apply(P1, 2, adjusted_pobs)
-
-  } else if (cdf == "ecdf") {
-
-    ecdf0 <- apply(P1, 2, ecdf)
-    for (i in 1:ncol(P1)) {
-      Fhat <- ecdf0[[i]]
-      P_star1[, i] <- Fhat(P1[, i])
-      P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-      P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-    }
-
-  }
+  P_star1 <- cdf_transform(P1, cdf)
 
   # rename columns of P_star matrix
   colnames(P_star1) <- paste0(colnames(P1))
 
   # generate copula-correction terms
-  P_star2 <- P_star1%*%solve(cor(apply(P_star1, 2, qnorm)))
+  P_star2 <- P_star1 %*% solve(cor(apply(P_star1, 2, qnorm)))
   P_star2 <- P_star2[, c(1:length(independent_P_vars))]
   P_star2 <- as.matrix(P_star2)
 
@@ -135,160 +74,106 @@ boots_JAMS1 <- function(formula, data_cleaned, dependent_var, independent_P_vars
   mod1 <- lm(as.formula(paste(dependent_var, "~ . -", dependent_var, "- 1")),
              data = as.data.frame(est_matrix))
 
-  Estimates <- mod1$coefficients
-  return(Estimates)
+  mod1$coefficients
 
 }
-boots_JAMS2 <- function(formula, data_cleaned, dependent_var, independent_P_vars,
-                        independent_X_vars, has_intercept, X, cdf, factor_vars,
-                        design_matrix1, full_formula, Ests) {
-  
-  repeat {
-    
-    data <- data_cleaned
-    
-    repeat {
-      
-      # Loop or logic starts here
-      data_cleaned <- data %>%
-        sample_n(size = nrow(data), replace = TRUE)
-      design_matrix <- model.matrix(full_formula, data = data_cleaned)
-      YP <- t(as.matrix(design_matrix))%*%as.matrix(design_matrix)
-      rank_A <- Matrix::rankMatrix(YP)[1]
-      
-      # Check if for each factor variable, there are at least 3 observations for each level
-      for (var in factor_vars) {
-        levels_var <- levels(data_cleaned[[var]])
-        for (lvl in levels_var) {
-          num_observations <- sum(data_cleaned[[var]] == lvl)
-          
-          if (num_observations < 3) { break }
-        }
-        
-      }
-      
-      # If the rank condition is met, or if the loop was broken due to insufficient observations, we proceed
-      if (rank_A == ncol(design_matrix) &
-          all(colnames(design_matrix1) %in% colnames(design_matrix))) { break }
-      
-    }
-    
-    # all regressor(s)
-    data_cleaned_with_P_star2 <- data_cleaned
-    full_matrix_with_P_Pstar2 <- data_cleaned_with_P_star2
-    
-    # Loop over each factor variable
-    for (var in factor_vars) {
-      
-      levels_var <- levels(data_cleaned[[var]])  # Get factor levels
-      
-      for (lvl in levels_var) {
-        
-        subset_name <- paste(var, lvl, sep = "_")
-        subdat1 <- subset(data_cleaned, data_cleaned[[var]] == lvl)
-        
-        if (nrow(subdat1) > 3 && 
-            any(sapply(subdat1[independent_P_vars], function(col) length(unique(col)) > 1))) {
-          
-          subdat2 <- subdat1[, setdiff(c(independent_P_vars, independent_X_vars), factor_vars)]
-          subdat2 <- as.matrix(subdat2)
-          subdat2 <- subdat2[, apply(subdat2, 2, function(x) length(unique(x)) > 1), drop = FALSE]
-          
-          P_star1 <- matrix(NA, nrow = nrow(subdat2), ncol = ncol(subdat2))
-          
-          if (cdf == "kde") {
-            
-            for (i in 1:ncol(subdat2)) {
-              Fhat <- ks::kcde(subdat2[, i])
-              P_star1[, i] <- predict(Fhat, x = subdat2[, i])
-            }
-            
-          } else if (cdf == "resc.ecdf") {
-            
-            P_star1 <- apply(subdat2, 2, pseudo_observations)
-            
-          } else if (cdf == "adj.ecdf") {
-            
-            P_star1 <- apply(subdat2, 2, adjusted_pobs)
-            
-          } else if (cdf == "ecdf") {
-            
-            ecdf0 <- apply(subdat2, 2, ecdf)
-            for (i in 1:ncol(subdat2)) {
-              Fhat <- ecdf0[[i]]
-              P_star1[, i] <- Fhat(subdat2[, i])
-              P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-              P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-            }
-            
-          }
-          
-          # generate copula-correction terms
-          is_issue <- tryCatch(
-            { solve(cor(apply(P_star1, 2, qnorm))) ; FALSE },
-            error = function(e) TRUE,
-            warning = function(w) TRUE
-          )
-          
-          if (is_issue) {
-            
-            P_star2 <- matrix(data = 0, nrow = nrow(P_star1), ncol = ncol(P_star1))
-            P_star2 <- as.matrix((P_star2))
-            
-          } else {
-            
-            P_star2 <- P_star1%*%solve(cor(apply(P_star1, 2, qnorm)))
-            
-            if (length(independent_P_vars) > ncol(P_star2)) {
-              P_star2 <- as.matrix((P_star2))
-            } else {
-              P_star2 <- P_star2[, c(1:length(independent_P_vars))]
-              P_star2 <- as.matrix((P_star2))
-            }
-            
-          }
-          
-          # rename columns of P_star matrix
-          colnames(P_star2) <- paste0(independent_P_vars[c(1:ncol(P_star2))],
-                                      "_", var, "_", lvl, "_cop")
-          
-          # merge data
-          P_star2_full <- matrix(0, nrow = nrow(data_cleaned_with_P_star2), ncol = ncol(P_star2))
-          P_star2_full[data_cleaned_with_P_star2[[var]] == lvl, ] <- P_star2
-          P_star2_df <- as.data.frame(P_star2_full)
-          colnames(P_star2_df) <- colnames(P_star2)
-          
-          full_matrix_with_P_Pstar2 <- cbind(full_matrix_with_P_Pstar2, P_star2_df)
-          
-        }
-        
-      }
-      
-    }
-    
-    # control function approach
-    mod1 <- lm(as.formula(paste(dependent_var, "~ . -",
-                                dependent_var)),
-               data = full_matrix_with_P_Pstar2)
-    
-    Estimates <- mod1$coefficients
-    Estimates <- Estimates[!is.na(Estimates)]
-    
-    # Check if the same variables are contained
-    trapped_names <- names(Estimates)
-    estimates_names <- names(Ests)
-    
-    # Remove "as.factor()" from the names if it appears
-    trapped_names <- gsub("as.factor\\((.*?)\\)", "\\1", trapped_names)
-    estimates_names <- gsub("as.factor\\((.*?)\\)", "\\1", estimates_names)
-    estimates_names <- gsub("`", "", estimates_names)
-    
-    if (identical(trapped_names, estimates_names)) { break }
-    
-  }
-  
-  return(Estimates)
 
+jams_boot_factor <- function(data_cleaned, full_formula, dependent_var,
+                             independent_P_vars, independent_X_vars, cdf,
+                             factor_vars, design_matrix1) {
+
+  design_matrix <- model.matrix(full_formula, data = data_cleaned)
+  YP <- t(as.matrix(design_matrix)) %*% as.matrix(design_matrix)
+  rank_A <- Matrix::rankMatrix(YP)[1]
+  if (!(rank_A == ncol(design_matrix) &&
+        all(colnames(design_matrix1) %in% colnames(design_matrix)))) {
+    stop("Bootstrap design matrix is rank deficient", call. = FALSE)
+  }
+
+  # all regressor(s)
+  data_cleaned_with_P_star2 <- data_cleaned
+  full_matrix_with_P_Pstar2 <- data_cleaned_with_P_star2
+
+  # Loop over each factor variable
+  for (var in factor_vars) {
+
+    levels_var <- levels(data_cleaned[[var]])  # Get factor levels
+
+    for (lvl in levels_var) {
+
+      subdat1 <- subset(data_cleaned, data_cleaned[[var]] == lvl)
+
+      if (nrow(subdat1) > 3 &&
+          any(sapply(subdat1[independent_P_vars], function(col) length(unique(col)) > 1))) {
+
+        subdat2 <- subdat1[, setdiff(c(independent_P_vars, independent_X_vars), factor_vars)]
+        subdat2 <- as.matrix(subdat2)
+        subdat2 <- subdat2[, apply(subdat2, 2, function(x) length(unique(x)) > 1), drop = FALSE]
+
+        P_star1 <- cdf_transform(subdat2, cdf)
+
+        # generate copula-correction terms
+        is_issue <- tryCatch(
+          { solve(cor(apply(P_star1, 2, qnorm))) ; FALSE },
+          error = function(e) TRUE,
+          warning = function(w) TRUE
+        )
+
+        if (is_issue) {
+
+          P_star2 <- matrix(data = 0, nrow = nrow(P_star1), ncol = ncol(P_star1))
+          P_star2 <- as.matrix((P_star2))
+
+        } else {
+
+          P_star2 <- P_star1 %*% solve(cor(apply(P_star1, 2, qnorm)))
+
+          if (length(independent_P_vars) > ncol(P_star2)) {
+            P_star2 <- as.matrix((P_star2))
+          } else {
+            P_star2 <- P_star2[, c(1:length(independent_P_vars))]
+            P_star2 <- as.matrix((P_star2))
+          }
+
+        }
+
+        # rename columns of P_star matrix
+        colnames(P_star2) <- paste0(independent_P_vars[c(1:ncol(P_star2))],
+                                    "_", var, "_", lvl, "_cop")
+
+        # merge data
+        P_star2_full <- matrix(0, nrow = nrow(data_cleaned_with_P_star2), ncol = ncol(P_star2))
+        P_star2_full[data_cleaned_with_P_star2[[var]] == lvl, ] <- P_star2
+        P_star2_df <- as.data.frame(P_star2_full)
+        colnames(P_star2_df) <- colnames(P_star2)
+
+        full_matrix_with_P_Pstar2 <- cbind(full_matrix_with_P_Pstar2, P_star2_df)
+
+      }
+
+    }
+
+  }
+
+  # control function approach
+  mod1 <- lm(as.formula(paste(dependent_var, "~ . -",
+                              dependent_var)),
+             data = full_matrix_with_P_Pstar2)
+
+  Estimates <- mod1$coefficients
+  Estimates <- Estimates[!is.na(Estimates)]
+
+  # Align coefficient names with the initial fit (the reference strips
+  # "as.factor()" wrappers and backticks before comparing replicate names)
+  names(Estimates) <- jams_normalise_names(names(Estimates))
+
+  Estimates
+
+}
+
+jams_normalise_names <- function(x) {
+  x <- gsub("as.factor\\((.*?)\\)", "\\1", x)
+  gsub("`", "", x)
 }
 
 # Liengaard et al. (2024) estimator
@@ -298,8 +183,6 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
   ################################################################################
 
   # check arguments
-
-
   if (rlang::is_formula(formula) == FALSE) { stop("Argument formula is not a formula object", call. = FALSE) }
   if (is.data.frame(data) == FALSE) { stop("Argument data is not a data.frame object", call. = FALSE) }
   if (inherits(data, "data.table")) { stop("Argument data should not be a data.table.", call = FALSE) }
@@ -389,34 +272,7 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
     # endogenous regressor(s)
     if (has_intercept) { P1 <- design_matrix[, -1] } else { P1 <- design_matrix }
     P1 <- as.matrix(P1)
-    P_star1 <- matrix(NA, nrow = nrow(P1), ncol = ncol(P1))
-
-    if (cdf == "kde") {
-
-      for (i in 1:ncol(P1)) {
-        Fhat <- ks::kcde(P1[, i])
-        P_star1[, i] <- predict(Fhat, x = P1[, i])
-      }
-
-    } else if (cdf == "resc.ecdf") {
-
-      P_star1 <- apply(P1, 2, pseudo_observations)
-
-    } else if (cdf == "adj.ecdf") {
-
-      P_star1 <- apply(P1, 2, adjusted_pobs)
-
-    } else if (cdf == "ecdf") {
-
-      ecdf0 <- apply(P1, 2, ecdf)
-      for (i in 1:ncol(P1)) {
-        Fhat <- ecdf0[[i]]
-        P_star1[, i] <- Fhat(P1[, i])
-        P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-        P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-      }
-
-    }
+    P_star1 <- cdf_transform(P1, cdf)
 
     # rename columns of P_star matrix
     colnames(P_star1) <- paste0(colnames(P1), "_cop")
@@ -436,18 +292,30 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
     residuals_manual <- est_matrix[, dependent_var] - fitted_values
 
     # Bootstrapping
-    print("Estimation done. Calculating bootstrap standard errors")
-    trapped <- pbsapply(1:nboots,
-                        function(i) boots1(formula = formula,
-                                           data_cleaned = data_cleaned,
-                                           dependent_var = dependent_var,
-                                           independent_vars = independent_vars,
-                                           has_intercept = has_intercept,
-                                           cdf = cdf, X = i))
-    ses <- apply(trapped, 1, sd)
+    if (nboots > 0) {
 
-    Estimates1 <- cbind(Estimates, ses)
-    colnames(Estimates1) <- c("Estimate", "Std. Error")
+      message("Estimation done. Calculating bootstrap standard errors")
+      boot_mat <- bootstrap_estimates(
+        data = data_cleaned,
+        fit_fun = function(d) {
+          jams_boot_no_exog(d, formula = formula, dependent_var = dependent_var,
+                            has_intercept = has_intercept, cdf = cdf)
+        },
+        nboots = nboots,
+        expected_names = names(Estimates)
+      )
+      ses <- apply(boot_mat, 2, sd)
+
+      Estimates1 <- cbind(Estimates, ses)
+      colnames(Estimates1) <- c("Estimate", "Std. Error")
+
+    } else {
+
+      boot_mat <- NULL
+      Estimates1 <- matrix(Estimates, ncol = 1,
+                           dimnames = list(names(Estimates), "Estimate"))
+
+    }
 
   } else {
 
@@ -483,7 +351,7 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
     constant_vars <- sapply(data[variables], function(x) length(unique(x)) == 1)
 
     if (!all(numeric_vars)) {
-      stop("Only continuous variables can be endogenous. The following variables are not numeric: ", paste(variables[!numeric_vars], collapse = ", "))
+      stop("Only continuous variables can be endogenous. The following variables are not numeric: ", paste(independent_P_vars[!numeric_vars], collapse = ", "))
     }
 
     if (any(constant_vars)) {
@@ -524,40 +392,13 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 
       # all regressor(s)
       if (has_intercept) { P1 <- design_matrix[, -1] } else { P1 <- design_matrix }
-      P_star1 <- matrix(NA, nrow = nrow(P1), ncol = ncol(P1))
-
-      if (cdf == "kde") {
-
-        for (i in 1:ncol(P1)) {
-          Fhat <- ks::kcde(P1[, i])
-          P_star1[, i] <- predict(Fhat, x = P1[, i])
-        }
-
-      } else if (cdf == "resc.ecdf") {
-
-        P_star1 <- apply(P1, 2, pseudo_observations)
-
-      } else if (cdf == "adj.ecdf") {
-
-        P_star1 <- apply(P1, 2, adjusted_pobs)
-
-      } else if (cdf == "ecdf") {
-
-        ecdf0 <- apply(P1, 2, ecdf)
-        for (i in 1:ncol(P1)) {
-          Fhat <- ecdf0[[i]]
-          P_star1[, i] <- Fhat(P1[, i])
-          P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-          P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-        }
-
-      }
+      P_star1 <- cdf_transform(P1, cdf)
 
       # rename columns of P_star matrix
       colnames(P_star1) <- paste0(colnames(P1))
 
       # generate copula-correction terms
-      P_star2 <- P_star1%*%solve(cor(apply(P_star1, 2, qnorm)))
+      P_star2 <- P_star1 %*% solve(cor(apply(P_star1, 2, qnorm)))
       P_star2 <- P_star2[, c(1:length(independent_P_vars))]
       P_star2 <- as.matrix(P_star2)
 
@@ -580,21 +421,33 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
       residuals_manual <- est_matrix[, dependent_var] - fitted_values
 
       # Bootstrapping
-      print("Estimation done. Calculating bootstrap standard errors")
-      trapped <- pbsapply(1:nboots,
-                          function(i) boots_JAMS1(formula = formula,
-                                                  data_cleaned = data_cleaned,
-                                                  dependent_var = dependent_var,
-                                                  independent_P_vars = independent_P_vars,
-                                                  independent_X_vars = independent_X_vars,
-                                                  has_intercept = has_intercept,
-                                                  cdf = cdf, X = i,
-                                                  full_formula = full_formula,
-                                                  design_matrix1 = design_matrix))
-      ses <- apply(trapped, 1, sd)
+      if (nboots > 0) {
 
-      Estimates1 <- cbind(Estimates, ses)
-      colnames(Estimates1) <- c("Estimate", "Std. Error")
+        message("Estimation done. Calculating bootstrap standard errors")
+        boot_mat <- bootstrap_estimates(
+          data = data_cleaned,
+          fit_fun = function(d) {
+            jams_boot_continuous(d, full_formula = full_formula,
+                                 dependent_var = dependent_var,
+                                 independent_P_vars = independent_P_vars,
+                                 has_intercept = has_intercept, cdf = cdf,
+                                 design_matrix1 = design_matrix)
+          },
+          nboots = nboots,
+          expected_names = names(Estimates)
+        )
+        ses <- apply(boot_mat, 2, sd)
+
+        Estimates1 <- cbind(Estimates, ses)
+        colnames(Estimates1) <- c("Estimate", "Std. Error")
+
+      } else {
+
+        boot_mat <- NULL
+        Estimates1 <- matrix(Estimates, ncol = 1,
+                             dimnames = list(names(Estimates), "Estimate"))
+
+      }
 
     } else {
 
@@ -620,44 +473,16 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 
         for (lvl in levels_var) {
 
-          subset_name <- paste(var, lvl, sep = "_")
           subdat1 <- subset(data_cleaned, data_cleaned[[var]] == lvl)
 
-          if (nrow(subdat1) > 3 && 
+          if (nrow(subdat1) > 3 &&
               any(sapply(subdat1[independent_P_vars], function(col) length(unique(col)) > 1))) {
-            
+
             subdat2 <- subdat1[, setdiff(c(independent_P_vars, independent_X_vars), factor_vars)]
             subdat2 <- as.matrix(subdat2)
             subdat2 <- subdat2[, apply(subdat2, 2, function(x) length(unique(x)) > 1), drop = FALSE]
-            
-            P_star1 <- matrix(NA, nrow = nrow(subdat2), ncol = ncol(subdat2))
 
-            if (cdf == "kde") {
-
-              for (i in 1:ncol(subdat2)) {
-                Fhat <- ks::kcde(subdat2[, i])
-                P_star1[, i] <- predict(Fhat, x = subdat2[, i])
-              }
-
-            } else if (cdf == "resc.ecdf") {
-
-              P_star1 <- apply(subdat2, 2, pseudo_observations)
-
-            } else if (cdf == "adj.ecdf") {
-
-              P_star1 <- apply(subdat2, 2, adjusted_pobs)
-
-            } else if (cdf == "ecdf") {
-
-              ecdf0 <- apply(subdat2, 2, ecdf)
-              for (i in 1:ncol(subdat2)) {
-                Fhat <- ecdf0[[i]]
-                P_star1[, i] <- Fhat(subdat2[, i])
-                P_star1[P_star1[, i] == min(P_star1[, i]), i] <- 10e-7
-                P_star1[P_star1[, i] == max(P_star1[, i]), i] <- 1-10e-7
-              }
-
-            }
+            P_star1 <- cdf_transform(subdat2, cdf)
 
             # generate copula-correction terms
             is_issue <- tryCatch(
@@ -673,7 +498,7 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 
             } else {
 
-              P_star2 <- P_star1%*%solve(cor(apply(P_star1, 2, qnorm)))
+              P_star2 <- P_star1 %*% solve(cor(apply(P_star1, 2, qnorm)))
 
               if (length(independent_P_vars) > ncol(P_star2)) {
                 P_star2 <- as.matrix((P_star2))
@@ -716,34 +541,40 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
       residuals_manual <- data_cleaned_with_P_star2[, dependent_var] - fitted_values
 
       # Bootstrapping
-      print("Estimation done. Calculating bootstrap standard errors")
-      trapped <- pbsapply(1:nboots,
-                          function(i) boots_JAMS2(formula = formula,
-                                                  data_cleaned = data_cleaned,
-                                                  dependent_var = dependent_var,
-                                                  independent_P_vars = independent_P_vars,
-                                                  independent_X_vars = independent_X_vars,
-                                                  has_intercept = has_intercept,
-                                                  cdf = cdf, X = i,
-                                                  factor_vars = factor_vars,
-                                                  full_formula = full_formula,
-                                                  design_matrix1 = design_matrix,
-                                                  Ests = Estimates))
-      
-      if (is.list(trapped)) {
-        common_names <- Reduce(intersect, lapply(trapped, names))
-        trapped_df <- do.call(rbind, lapply(trapped, function(x) x[common_names]))
-        ses <- apply(trapped_df, 2, sd)
-      } else { ses <- apply(trapped, 1, sd) }
+      if (nboots > 0) {
 
-      Estimates1 <- cbind(Estimates, ses)
-      colnames(Estimates1) <- c("Estimate", "Std. Error")
+        message("Estimation done. Calculating bootstrap standard errors")
+        boot_mat <- bootstrap_estimates(
+          data = data_cleaned,
+          fit_fun = function(d) {
+            jams_boot_factor(d, full_formula = full_formula,
+                             dependent_var = dependent_var,
+                             independent_P_vars = independent_P_vars,
+                             independent_X_vars = independent_X_vars,
+                             cdf = cdf, factor_vars = factor_vars,
+                             design_matrix1 = design_matrix)
+          },
+          nboots = nboots,
+          expected_names = jams_normalise_names(names(Estimates))
+        )
+        ses <- apply(boot_mat, 2, sd)
+
+        Estimates1 <- cbind(Estimates, ses)
+        colnames(Estimates1) <- c("Estimate", "Std. Error")
+
+      } else {
+
+        boot_mat <- NULL
+        Estimates1 <- matrix(Estimates, ncol = 1,
+                             dimnames = list(names(Estimates), "Estimate"))
+
+      }
 
     }
 
   }
 
-  return(list(Estimates1, residuals_manual))
+  return(list(Estimates1, residuals_manual, boot_mat))
 
 }
 
@@ -789,10 +620,6 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 # https://www.nber.org/system/files/workingpapers/w32231/w32231.pdf.
 
 
-
-
-
-
 #' Copula Regression: Liengaard et al. (2025)
 #'
 #' Implements the adjusted estimator for Gaussian copula endogeneity correction
@@ -800,12 +627,18 @@ CopRegJAMS_impl <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "
 #' original research code and supports factor-specific transformations.
 #'
 #' @inheritParams CopRegPG
-#' @return An object of class `endog_copula_fit`.
+#' @inherit CopRegPG return
 #' @references Liengaard, B. D., J.-M. Becker, M. Bennedsen, P. Heiler, L. N.
 #'   Taylor, and C. M. Ringle (2025). Dealing with regression models'
 #'   endogeneity by means of an adjusted estimator for the Gaussian copula
 #'   approach. *Journal of the Academy of Marketing Science* 53, 279–299.
-#' @importFrom dplyr filter mutate select sample_n all_of
+#' @examples
+#' data(sim_endog)
+#'
+#' fit <- CopRegJAMS(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+#'                   cdf = "adj.ecdf", nboots = 0)
+#' summary(fit)
+#' @importFrom dplyr select all_of
 #' @importFrom magrittr %>%
 #' @importFrom stats as.formula cor ecdf lm model.matrix na.omit predict qnorm sd terms
 #' @importFrom Matrix rankMatrix
@@ -821,12 +654,13 @@ CopRegJAMS <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.e
   }
   estimates <- as.matrix(raw[[1]])
   residuals <- raw[[2]]
+  boot_mat <- if (length(raw) >= 3) raw[[3]] else NULL
   make_result(
     estimates = estimates,
     residuals = residuals,
     call = call,
     method = "Liengaard et al. (2025)",
     cdf = cdf,
-    boot_replicates = NULL
+    boot_replicates = boot_mat
   )
 }

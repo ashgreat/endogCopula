@@ -13,9 +13,41 @@
 #'   estimator. One of `"kde"`, `"ecdf"`, `"resc.ecdf"`, or `"adj.ecdf"`.
 #' @param nboots Number of bootstrap replications used to compute standard
 #'   errors. Set to zero to skip bootstrapping.
-#' @return An object of class `endog_copula_fit`.
+#' @return An object of class `endog_copula_fit`: a list with components
+#'   \describe{
+#'     \item{`call`}{The matched call.}
+#'     \item{`method`}{Character string identifying the estimator.}
+#'     \item{`cdf`}{The CDF estimator used for the copula transformation.}
+#'     \item{`coefficients`}{Matrix of coefficient estimates with an
+#'       `Estimate` column and, when `nboots > 0`, a `Std. Error` column
+#'       computed from the bootstrap replicates.}
+#'     \item{`residuals`}{Numeric vector of residuals from the structural
+#'       part of the model (copula control terms excluded).}
+#'     \item{`bootstrap`}{Matrix of bootstrap coefficient replicates, or
+#'       `NULL` when `nboots = 0`.}
+#'   }
+#'   Objects of this class support [print()], [summary()], [coef()],
+#'   [residuals()], and [confint()].
+#' @details Point estimates are numerically equivalent to the published
+#'   reference implementation. Bootstrap standard errors deliberately differ:
+#'   the reference code omits the inverse-normal (`qnorm`) transformation of
+#'   the copula terms inside bootstrap replicates even though its main fit
+#'   applies it. Here every replicate refits the same estimator as the main
+#'   fit, so the standard errors describe the estimator actually reported.
 #' @references Park, S. and S. Gupta (2012). Handling endogenous regressors by
 #'   joint estimation using copulas. *Marketing Science* 31 (4), 567–586.
+#' @examples
+#' data(sim_endog)
+#'
+#' fit <- CopRegPG(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+#'                 cdf = "resc.ecdf", nboots = 0)
+#' summary(fit)
+#'
+#' if (requireNamespace("ks", quietly = TRUE)) {
+#'   fit_kde <- CopRegPG(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+#'                       cdf = "kde", nboots = 0)
+#'   coef(fit_kde)
+#' }
 #' @export
 CopRegPG <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"),
                      nboots = 199) {
@@ -37,22 +69,21 @@ CopRegPG <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecd
   boot_mat <- NULL
   if (nboots > 0) {
     message("Computing bootstrap standard errors (this may take a while)...")
-    k <- nrow(fit$coefficients)
-    boot_res <- vapply(
-      seq_len(nboots),
-      function(i) {
-        boot_data <- bootstrap_sample(cleaned)
-        res <- pg_fit(boot_data, components, formula, cdf)
-        res$coefficients[, 1]
-      },
-      numeric(k)
+    expected_names <- rownames(fit$coefficients)
+    # Deliberate divergence from the reference: boots1/boots_PG in
+    # CopRegPG.R omit the qnorm() step in bootstrap replicates even though
+    # the main fit applies it (the other reference estimators apply qnorm()
+    # in both). Each replicate here refits the same estimator as the main
+    # fit, so standard errors describe the estimator actually reported.
+    fit_fun <- function(boot_data) {
+      pg_fit(boot_data, components, formula, cdf)$coefficients[, 1]
+    }
+    boot_mat <- bootstrap_estimates(cleaned, fit_fun, nboots, expected_names)
+    ses <- apply(boot_mat, 2, stats::sd)
+    fit$coefficients <- cbind(
+      Estimate = fit$coefficients[, 1],
+      `Std. Error` = ses[expected_names]
     )
-    rownames(boot_res) <- rownames(fit$coefficients)
-    boot_mat <- t(boot_res)
-    colnames(boot_mat) <- rownames(fit$coefficients)
-    ses <- apply(boot_res, 1, stats::sd)
-    ses <- ses[rownames(fit$coefficients)]
-    fit$coefficients <- cbind(Estimate = fit$coefficients[, 1], `Std. Error` = ses)
   }
 
   make_result(
@@ -73,49 +104,34 @@ pg_fit <- function(data, components, original_formula, cdf) {
 
   if (length(exog) == 0) {
     design_info <- pg_design_no_exog(data, response, has_intercept)
-    transformed <- cdf_transform(design_info$endogenous_matrix, cdf)
-    transformed <- apply(transformed, 2, stats::qnorm)
-    colnames(transformed) <- paste0(colnames(design_info$endogenous_matrix), "_cop")
-
-    estimation_matrix <- cbind(design_info$full_matrix, transformed)
-    estimation_df <- as.data.frame(estimation_matrix)
-    lm_formula <- stats::as.formula(paste(response, "~ . -", response, "- 1"))
-    fit <- safe_lm(lm_formula, estimation_df)
-
-    estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    coef_names <- intersect(names(beta), colnames(design_info$design_matrix))
-    X_beta <- design_info$design_matrix[, coef_names, drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta[coef_names])
-    residuals <- estimation_matrix[, response] - fitted
-    coeff_mat <- matrix(estimates, ncol = 1)
-    rownames(coeff_mat) <- names(estimates)
-    colnames(coeff_mat) <- "Estimate"
-    list(coefficients = coeff_mat, residuals = residuals)
+    p_matrix <- design_info$endogenous_matrix
   } else {
     design_info <- pg_design_with_exog(data, original_formula, response, endog)
-
     p_matrix <- design_info$design_matrix[, endog, drop = FALSE]
-    transformed <- cdf_transform(p_matrix, cdf)
-    transformed <- apply(transformed, 2, stats::qnorm)
-    colnames(transformed) <- paste0(colnames(p_matrix), "_cop")
-
-    estimation_matrix <- cbind(design_info$full_matrix, transformed)
-    estimation_df <- as.data.frame(estimation_matrix)
-    lm_formula <- stats::as.formula(paste(response, "~ . -", response, "- 1"))
-    fit <- safe_lm(lm_formula, estimation_df)
-
-    estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    coef_names <- intersect(names(beta), colnames(design_info$design_matrix))
-    X_beta <- design_info$design_matrix[, coef_names, drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta[coef_names])
-    residuals <- estimation_matrix[, response] - fitted
-    coeff_mat <- matrix(estimates, ncol = 1)
-    rownames(coeff_mat) <- names(estimates)
-    colnames(coeff_mat) <- "Estimate"
-    list(coefficients = coeff_mat, residuals = residuals)
   }
+
+  transformed <- cdf_transform(p_matrix, cdf)
+  transformed <- apply(transformed, 2, stats::qnorm)
+  colnames(transformed) <- paste0(colnames(p_matrix), "_cop")
+
+  estimation_matrix <- cbind(design_info$full_matrix, transformed)
+  estimation_df <- as.data.frame(estimation_matrix)
+  lm_formula <- stats::as.formula(paste(response, "~ . -", response, "- 1"))
+  fit <- safe_lm(lm_formula, estimation_df)
+
+  estimates <- stats::coef(fit)
+  # Residuals follow the reference implementation: drop the copula control
+  # terms and multiply the remaining coefficients into the design matrix by
+  # position. lm() backtick-quotes non-syntactic column names (e.g.
+  # "(Intercept)" becomes "`(Intercept)`"), so a name-based match would
+  # silently drop the intercept from the fitted values.
+  beta <- estimates[!grepl("_cop", names(estimates))]
+  fitted <- as.numeric(design_info$design_matrix %*% beta)
+  residuals <- as.numeric(estimation_matrix[, response] - fitted)
+  coeff_mat <- matrix(estimates, ncol = 1)
+  rownames(coeff_mat) <- names(estimates)
+  colnames(coeff_mat) <- "Estimate"
+  list(coefficients = coeff_mat, residuals = residuals)
 }
 
 pg_design_no_exog <- function(data, response, has_intercept) {
@@ -140,7 +156,9 @@ pg_design_no_exog <- function(data, response, has_intercept) {
 }
 
 pg_design_with_exog <- function(data, original_formula, response, endogenous) {
-  rhs <- gsub("\\|", "+", as.character(original_formula)[3])
+  # deparse1() keeps long formulas intact, whereas as.character(formula)[3]
+  # truncates the right-hand side at the first deparse line.
+  rhs <- gsub("|", "+", deparse1(original_formula[[3]]), fixed = TRUE)
   full_formula <- stats::as.formula(paste(response, "~", rhs))
   full_matrix <- stats::model.matrix(full_formula, data = data)
   full_matrix <- cbind(DependentVar = data[[response]], full_matrix)

@@ -8,8 +8,31 @@
 \description{
 The endogCopula package implements a collection of copula-based estimators
 for addressing endogeneity in linear models. It includes cross-sectional
-estimators from Park and Gupta (2012), Yang et al. (2025), Hu et al. (2025),
-Breitung et al. (2024), Haschka (2024), and Liengaard et al. (2025).
+estimators from Park and Gupta (2012) (\code{\link[=CopRegPG]{CopRegPG()}}), Yang et al. (2025)
+(\code{\link[=CopReg2sCOPE]{CopReg2sCOPE()}}), Hu et al. (2025) (\code{\link[=CopReg2sCOPEnp]{CopReg2sCOPEnp()}}), Breitung et al.
+(2024) (\code{\link[=CopRegBMW]{CopRegBMW()}}), Haschka (2024) (\code{\link[=CopRegIMA]{CopRegIMA()}}), and Liengaard et
+al. (2025) (\code{\link[=CopRegJAMS]{CopRegJAMS()}}).
+}
+\details{
+All cross-sectional estimators share the two-part formula interface
+\code{y ~ endog1 + endog2 | exog1 + exog2}, a \code{cdf} argument selecting the
+marginal CDF estimator (\code{"kde"}, \code{"ecdf"}, \code{"resc.ecdf"}, or
+\code{"adj.ecdf"}), and bootstrap standard errors controlled via \code{nboots}.
+Fitted models are returned as \code{endog_copula_fit} objects with \code{print()},
+\code{summary()}, \code{coef()}, \code{residuals()}, and \code{confint()} methods.
+
+The panel estimator of Haschka (2022) and the Bayesian sampler of Haschka
+(2022b) live in the companion packages \code{endogCopulaPanel} and
+\code{endogCopulaBayes}; the wrappers \code{\link[=CopRegML_par]{CopRegML_par()}} and \code{\link[=CopRegBayes]{CopRegBayes()}}
+delegate to them when those packages are installed.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/ashgreat/endogCopula}
+  \item Report bugs at \url{https://github.com/ashgreat/endogCopula/issues}
+}
+
 }
 \author{
 \strong{Maintainer}: Ashwin Malshe \email{ashwin@malshe.com}

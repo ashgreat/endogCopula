@@ -23,7 +23,22 @@ CopRegBayes(
 
 \item{startvalue}{Optional numeric vector of starting values.}
 }
+\value{
+The MCMC output as returned by \code{endogCopulaBayes::CopRegBayes()},
+containing posterior draws for the model parameters after burn-in and
+thinning. See the documentation in the \code{endogCopulaBayes} package for
+the full structure.
+}
 \description{
 Thin wrapper around \code{endogCopulaBayes::CopRegBayes()}. Requires the optional
 \code{endogCopulaBayes} package to be installed.
+}
+\examples{
+\dontrun{
+# Requires the optional 'endogCopulaBayes' package:
+data(sim_endog)
+bayes_data <- data.frame(y = sim_endog$y, z = sim_endog$z_endog,
+                         x = sim_endog$x_exog)
+draws <- CopRegBayes(bayes_data, iterations = 10000, burnin = 2000)
+}
 }

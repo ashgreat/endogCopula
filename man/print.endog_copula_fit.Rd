@@ -9,8 +9,19 @@
 \arguments{
 \item{x}{An object returned by one of the copula estimators.}
 
-\item{...}{Passed to downstream methods.}
+\item{...}{Passed to \code{\link[stats:printCoefmat]{stats::printCoefmat()}} when bootstrap standard errors
+are available.}
+}
+\value{
+Invisibly returns \code{x}, after printing the estimator name, the CDF
+transformation, and the coefficient table.
 }
 \description{
 Print method for \code{endog_copula_fit}
+}
+\examples{
+data(sim_endog)
+fit <- CopRegPG(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+                cdf = "resc.ecdf", nboots = 0)
+print(fit)
 }

@@ -4,10 +4,16 @@
 #' correlations between regressors to build copula-based control functions.
 #'
 #' @inheritParams CopRegPG
-#' @return An object of class `endog_copula_fit`.
+#' @inherit CopRegPG return
 #' @references Haschka, R. E. (2024). Robustness of copula-correction models in
 #'   causal analysis: Exploiting between-regressor correlation. *IMA Journal of
 #'   Management Mathematics* 36 (1), 161–180.
+#' @examples
+#' data(sim_endog)
+#'
+#' fit <- CopRegIMA(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+#'                  cdf = "resc.ecdf", nboots = 0)
+#' summary(fit)
 #' @export
 CopRegIMA <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"),
                       nboots = 199) {
@@ -29,22 +35,14 @@ CopRegIMA <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ec
   boot_mat <- NULL
   if (nboots > 0) {
     message("Computing bootstrap standard errors (this may take a while)...")
-    k <- nrow(fit$coefficients)
-    boot_res <- vapply(
-      seq_len(nboots),
-      function(i) {
-        boot_data <- bootstrap_sample(cleaned)
-        res <- ima_fit(boot_data, components, formula, cdf)
-        res$coefficients[, 1]
-      },
-      numeric(k)
-    )
-    rownames(boot_res) <- rownames(fit$coefficients)
-    boot_mat <- t(boot_res)
-    colnames(boot_mat) <- rownames(fit$coefficients)
-    ses <- apply(boot_res, 1, stats::sd)
-    ses <- ses[rownames(fit$coefficients)]
-    fit$coefficients <- cbind(Estimate = fit$coefficients[, 1], `Std. Error` = ses)
+    expected_names <- rownames(fit$coefficients)
+    fit_fun <- function(boot_data) {
+      res <- ima_fit(boot_data, components, formula, cdf)
+      stats::setNames(res$coefficients[, 1], rownames(res$coefficients))
+    }
+    boot_mat <- bootstrap_estimates(cleaned, fit_fun, nboots, expected_names)
+    ses <- apply(boot_mat, 2, stats::sd)
+    fit$coefficients <- cbind(Estimate = fit$coefficients[, 1], `Std. Error` = ses[expected_names])
   }
 
   make_result(
@@ -75,9 +73,10 @@ ima_fit <- function(data, components, original_formula, cdf) {
 
     estimates <- stats::coef(fit)
     beta <- estimates[!grepl("_cop$", names(estimates))]
-    coef_names <- intersect(names(beta), colnames(design_info$design_matrix))
-    X_beta <- design_info$design_matrix[, coef_names, drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta[coef_names])
+    # The reference multiplies the design matrix by the non-copula
+    # coefficients positionally (their order always matches), because lm()
+    # backticks non-syntactic names such as (Intercept).
+    fitted <- as.numeric(design_info$design_matrix %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)
     rownames(coeff_mat) <- names(estimates)
@@ -114,8 +113,9 @@ ima_fit <- function(data, components, original_formula, cdf) {
 
     estimates <- stats::coef(fit)
     beta <- estimates[!grepl("_cop$", names(estimates))]
-    X_beta <- design_info$design_matrix[, names(beta), drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta)
+    # Positional multiplication, matching the reference implementation (the
+    # lm() coefficient names carry backticks for non-syntactic columns).
+    fitted <- as.numeric(design_info$design_matrix %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)
     rownames(coeff_mat) <- names(estimates)

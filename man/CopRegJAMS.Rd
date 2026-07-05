@@ -26,12 +26,33 @@ estimator. One of \code{"kde"}, \code{"ecdf"}, \code{"resc.ecdf"}, or \code{"adj
 errors. Set to zero to skip bootstrapping.}
 }
 \value{
-An object of class \code{endog_copula_fit}.
+An object of class \code{endog_copula_fit}: a list with components
+\describe{
+\item{\code{call}}{The matched call.}
+\item{\code{method}}{Character string identifying the estimator.}
+\item{\code{cdf}}{The CDF estimator used for the copula transformation.}
+\item{\code{coefficients}}{Matrix of coefficient estimates with an
+\code{Estimate} column and, when \code{nboots > 0}, a \verb{Std. Error} column
+computed from the bootstrap replicates.}
+\item{\code{residuals}}{Numeric vector of residuals from the structural
+part of the model (copula control terms excluded).}
+\item{\code{bootstrap}}{Matrix of bootstrap coefficient replicates, or
+\code{NULL} when \code{nboots = 0}.}
+}
+Objects of this class support \code{\link[=print]{print()}}, \code{\link[=summary]{summary()}}, \code{\link[=coef]{coef()}},
+\code{\link[=residuals]{residuals()}}, and \code{\link[=confint]{confint()}}.
 }
 \description{
 Implements the adjusted estimator for Gaussian copula endogeneity correction
 proposed by Liengaard et al. (2025). The implementation closely follows the
 original research code and supports factor-specific transformations.
+}
+\examples{
+data(sim_endog)
+
+fit <- CopRegJAMS(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+                  cdf = "adj.ecdf", nboots = 0)
+summary(fit)
 }
 \references{
 Liengaard, B. D., J.-M. Becker, M. Bennedsen, P. Heiler, L. N.

@@ -10,7 +10,19 @@
 #' @param nboots Number of bootstrap replications.
 #' @param starting_values Optional numeric vector of starting values.
 #' @param method Optimisation method passed to `stats::optim()`.
-#' @return Delegates to `endogCopulaPanel::CopRegML_par()`.
+#' @return The fitted panel model as returned by
+#'   `endogCopulaPanel::CopRegML_par()`: maximum likelihood coefficient
+#'   estimates for the fixed-effects copula panel model together with
+#'   bootstrap standard errors when `nboots > 0`. See the documentation in
+#'   the `endogCopulaPanel` package for the full structure.
+#' @examples
+#' \dontrun{
+#' # Requires the optional 'endogCopulaPanel' package and panel data with
+#' # numeric id and time variables:
+#' fit <- CopRegML_par(y ~ z_endog | x_exog + as.factor(year),
+#'                     index = c("id", "year"), data = panel_data,
+#'                     nboots = 199)
+#' }
 #' @export
 CopRegML_par <- function(formula, index, data, ecdf = TRUE, nboots = 199,
                          starting_values = NULL, method = "Nelder-Mead") {
@@ -40,6 +52,18 @@ CopRegML_par <- function(formula, index, data, ecdf = TRUE, nboots = 199,
 #' @param burnin Number of initial iterations discarded as burn-in.
 #' @param thin Thinning interval applied after burn-in.
 #' @param startvalue Optional numeric vector of starting values.
+#' @return The MCMC output as returned by `endogCopulaBayes::CopRegBayes()`,
+#'   containing posterior draws for the model parameters after burn-in and
+#'   thinning. See the documentation in the `endogCopulaBayes` package for
+#'   the full structure.
+#' @examples
+#' \dontrun{
+#' # Requires the optional 'endogCopulaBayes' package:
+#' data(sim_endog)
+#' bayes_data <- data.frame(y = sim_endog$y, z = sim_endog$z_endog,
+#'                          x = sim_endog$x_exog)
+#' draws <- CopRegBayes(bayes_data, iterations = 10000, burnin = 2000)
+#' }
 #' @export
 CopRegBayes <- function(data, iterations = 10000, burnin = 2000, thin = 10,
                         startvalue = NULL) {

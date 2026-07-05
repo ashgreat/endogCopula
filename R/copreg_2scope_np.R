@@ -1,13 +1,32 @@
 #' Copula Regression: Hu et al. (2025)
 #'
 #' Implements the instrument-free two-stage copula control function estimator
-#' proposed by Hu et al. (2025).
+#' proposed by Hu et al. (2025). When exogenous regressors are present, the
+#' first stage estimates conditional distribution functions nonparametrically,
+#' which requires the suggested `np` package.
 #'
 #' @inheritParams CopRegPG
-#' @return An object of class `endog_copula_fit`.
+#' @inherit CopRegPG return
 #' @references Hu, X., Y. Qian, and H. Xie (2025). Correcting endogeneity via
 #'   instrument-free two-stage nonparametric copula control functions. National
 #'   Bureau of Economic Research Working Paper 33607.
+#' @examples
+#' data(sim_endog)
+#'
+#' # Without exogenous regressors the estimator does not need the 'np' package
+#' fit <- CopReg2sCOPEnp(y ~ z_endog, data = sim_endog,
+#'                       cdf = "resc.ecdf", nboots = 0)
+#' summary(fit)
+#'
+#' \donttest{
+#' # With exogenous regressors the nonparametric first stage uses 'np'
+#' if (requireNamespace("np", quietly = TRUE)) {
+#'   fit_np <- CopReg2sCOPEnp(y ~ z_endog | x_exog,
+#'                            data = sim_endog[1:150, ],
+#'                            cdf = "resc.ecdf", nboots = 0)
+#'   coef(fit_np)
+#' }
+#' }
 #' @export
 CopReg2sCOPEnp <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"),
                            nboots = 199) {
@@ -29,22 +48,17 @@ CopReg2sCOPEnp <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "a
   boot_mat <- NULL
   if (nboots > 0) {
     message("Computing bootstrap standard errors (this may take a while)...")
-    k <- nrow(fit$coefficients)
-    boot_res <- vapply(
-      seq_len(nboots),
-      function(i) {
-        boot_data <- bootstrap_sample(cleaned)
-        res <- scope_np_fit(boot_data, components, formula, cdf)
-        res$coefficients[, 1]
-      },
-      numeric(k)
+    expected_names <- rownames(fit$coefficients)
+    fit_fun <- function(boot_data) {
+      res <- scope_np_fit(boot_data, components, formula, cdf)
+      res$coefficients[, 1]
+    }
+    boot_mat <- bootstrap_estimates(cleaned, fit_fun, nboots, expected_names)
+    ses <- apply(boot_mat, 2, stats::sd)
+    fit$coefficients <- cbind(
+      Estimate = fit$coefficients[, 1],
+      `Std. Error` = ses[expected_names]
     )
-    rownames(boot_res) <- rownames(fit$coefficients)
-    boot_mat <- t(boot_res)
-    colnames(boot_mat) <- rownames(fit$coefficients)
-    ses <- apply(boot_res, 1, stats::sd)
-    ses <- ses[rownames(fit$coefficients)]
-    fit$coefficients <- cbind(Estimate = fit$coefficients[, 1], `Std. Error` = ses)
   }
 
   make_result(
@@ -65,6 +79,8 @@ scope_np_fit <- function(data, components, original_formula, cdf) {
 
   if (length(exog) == 0) {
     design_info <- pg_design_no_exog(data, response, has_intercept)
+    # The reference implementation enters the marginal CDF values directly as
+    # control functions here (no qnorm in the exogenous-free branch).
     transformed <- cdf_transform(design_info$endogenous_matrix, cdf)
     colnames(transformed) <- paste0(colnames(design_info$endogenous_matrix), "_cop")
 
@@ -74,10 +90,11 @@ scope_np_fit <- function(data, components, original_formula, cdf) {
     fit <- safe_lm(lm_formula, estimation_df)
 
     estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    coef_names <- intersect(names(beta), colnames(design_info$design_matrix))
-    X_beta <- design_info$design_matrix[, coef_names, drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta[coef_names])
+    beta <- estimates[!grepl("_cop", names(estimates))]
+    # Positional multiplication as in the reference: lm backticks non-syntactic
+    # coefficient names such as `(Intercept)`, so name-based matching would
+    # silently drop the intercept.
+    fitted <- as.numeric(design_info$design_matrix %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)
     rownames(coeff_mat) <- names(estimates)
@@ -124,8 +141,13 @@ scope_np_fit <- function(data, components, original_formula, cdf) {
     fit <- safe_lm(lm_formula, estimation_df)
 
     estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    X_beta <- design_info$design_matrix[, names(beta), drop = FALSE]
+    beta <- estimates[!grepl("_cop", names(estimates))]
+    # Positional multiplication as in the reference (see comment above).
+    if (has_intercept) {
+      X_beta <- cbind(rep(1, nrow(design_no_intercept)), design_no_intercept)
+    } else {
+      X_beta <- design_no_intercept
+    }
     fitted <- as.numeric(X_beta %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)

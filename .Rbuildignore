@@ -3,3 +3,7 @@
 ^pkgdown$
 ^\.DS_Store$
 ^\.vscode$
+^doc$
+^Meta$
+^data-raw$
+^LICENSE\.md$

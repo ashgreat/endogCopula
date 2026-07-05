@@ -17,21 +17,21 @@ adjusted_pobs <- function(x, lower.tail = TRUE) {
   }
 }
 
-pseudo_observations <- function(x) {
-  transform_vec <- function(v) {
-    n <- length(v)
-    ranks <- base::rank(v, na.last = "keep", ties.method = "average")
-    (ranks - 0.5) / n
-  }
-  if (is.null(dim(x))) {
-    res <- transform_vec(x)
+pseudo_observations <- function(x, lower.tail = TRUE) {
+  if (!is.null(dim(x))) {
+    n <- nrow(x)
+    ranks <- apply(x, 2, base::rank, na.last = "keep", ties.method = "average")
+    U <- ranks / (n + 1)
   } else {
-    res <- vapply(seq_len(ncol(x)), function(j) transform_vec(x[, j]),
-      numeric(nrow(x)))
-    colnames(res) <- colnames(x)
-    rownames(res) <- rownames(x)
+    n <- length(x)
+    ranks <- base::rank(x, na.last = "keep", ties.method = "average")
+    U <- ranks / (n + 1)
   }
-  pmin(pmax(res, 1e-6), 1 - 1e-6)
+  if (lower.tail) {
+    U
+  } else {
+    1 - U
+  }
 }
 
 pbsapply <- function(X, FUN, simplify = TRUE, ...) {
@@ -68,10 +68,12 @@ cdf_transform <- function(x, method = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"))
       `adj.ecdf` = adjusted_pobs(column),
       {
         Fhat <- stats::ecdf(column)
-        Fhat(column)
+        values <- Fhat(column)
+        values[values == min(values)] <- 10e-7
+        values[values == max(values)] <- 1 - 10e-7
+        values
       }
     )
-    values <- pmin(pmax(values, 1e-6), 1 - 1e-6)
     output[, j] <- values
   }
   output
@@ -80,6 +82,46 @@ cdf_transform <- function(x, method = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"))
 bootstrap_sample <- function(data) {
   n <- nrow(data)
   data[sample.int(n = n, size = n, replace = TRUE), , drop = FALSE]
+}
+
+bootstrap_estimates <- function(data, fit_fun, nboots, expected_names, max_tries = 100L) {
+  if (!is.numeric(nboots) || length(nboots) != 1 || nboots < 0) {
+    stop("Argument 'nboots' must be a single non-negative number.", call. = FALSE)
+  }
+  nboots <- as.integer(nboots)
+  expected_names <- as.character(expected_names)
+  output <- matrix(NA_real_, nrow = nboots, ncol = length(expected_names))
+  colnames(output) <- expected_names
+  for (b in seq_len(nboots)) {
+    tries <- 0L
+    repeat {
+      tries <- tries + 1L
+      if (tries > max_tries) {
+        stop(
+          sprintf(
+            "Bootstrap replicate %d failed after %d attempts. The resampled data may be degenerate (e.g. rank-deficient design matrices); consider revising the model or increasing 'max_tries'.",
+            b, max_tries
+          ),
+          call. = FALSE
+        )
+      }
+      estimates <- tryCatch(
+        fit_fun(bootstrap_sample(data)),
+        error = function(e) NULL
+      )
+      if (is.null(estimates) || !is.numeric(estimates) || anyNA(estimates)) {
+        next
+      }
+      if (length(estimates) != length(expected_names) ||
+          is.null(names(estimates)) ||
+          !all(expected_names %in% names(estimates))) {
+        next
+      }
+      output[b, ] <- estimates[expected_names]
+      break
+    }
+  }
+  output
 }
 
 sanitise_column_names <- function(x) {

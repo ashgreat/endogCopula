@@ -26,11 +26,45 @@ estimator. One of \code{"kde"}, \code{"ecdf"}, \code{"resc.ecdf"}, or \code{"adj
 errors. Set to zero to skip bootstrapping.}
 }
 \value{
-An object of class \code{endog_copula_fit}.
+An object of class \code{endog_copula_fit}: a list with components
+\describe{
+\item{\code{call}}{The matched call.}
+\item{\code{method}}{Character string identifying the estimator.}
+\item{\code{cdf}}{The CDF estimator used for the copula transformation.}
+\item{\code{coefficients}}{Matrix of coefficient estimates with an
+\code{Estimate} column and, when \code{nboots > 0}, a \verb{Std. Error} column
+computed from the bootstrap replicates.}
+\item{\code{residuals}}{Numeric vector of residuals from the structural
+part of the model (copula control terms excluded).}
+\item{\code{bootstrap}}{Matrix of bootstrap coefficient replicates, or
+\code{NULL} when \code{nboots = 0}.}
+}
+Objects of this class support \code{\link[=print]{print()}}, \code{\link[=summary]{summary()}}, \code{\link[=coef]{coef()}},
+\code{\link[=residuals]{residuals()}}, and \code{\link[=confint]{confint()}}.
 }
 \description{
 Implements the instrument-free two-stage copula control function estimator
-proposed by Hu et al. (2025).
+proposed by Hu et al. (2025). When exogenous regressors are present, the
+first stage estimates conditional distribution functions nonparametrically,
+which requires the suggested \code{np} package.
+}
+\examples{
+data(sim_endog)
+
+# Without exogenous regressors the estimator does not need the 'np' package
+fit <- CopReg2sCOPEnp(y ~ z_endog, data = sim_endog,
+                      cdf = "resc.ecdf", nboots = 0)
+summary(fit)
+
+\donttest{
+# With exogenous regressors the nonparametric first stage uses 'np'
+if (requireNamespace("np", quietly = TRUE)) {
+  fit_np <- CopReg2sCOPEnp(y ~ z_endog | x_exog,
+                           data = sim_endog[1:150, ],
+                           cdf = "resc.ecdf", nboots = 0)
+  coef(fit_np)
+}
+}
 }
 \references{
 Hu, X., Y. Qian, and H. Xie (2025). Correcting endogeneity via

@@ -1,7 +1,7 @@
 Package: endogCopula
 Type: Package
 Title: Endogeneity Corrections via Gaussian Copulas
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: person(given = "Ashwin", family = "Malshe", role = c("aut", "cre"),
     email = "ashwin@malshe.com")
 Description: Implements Gaussian copula based estimators for handling endogeneity in linear models, including
@@ -10,6 +10,8 @@ Description: Implements Gaussian copula based estimators for handling endogeneit
     coefficients, obtain bootstrap-based standard errors, and work with residual diagnostics across cross-sectional,
     panel, and Bayesian settings.
 License: MIT + file LICENSE
+URL: https://github.com/ashgreat/endogCopula
+BugReports: https://github.com/ashgreat/endogCopula/issues
 Depends: R (>= 4.1)
 Imports: Matrix,
          dplyr,
@@ -17,10 +19,14 @@ Imports: Matrix,
          nlme,
          rlang,
          stats
-Suggests: ks,
+Suggests: copula,
+          ks,
+          np,
+          pbapply,
           testthat (>= 3.0.0),
           knitr,
           rmarkdown
+VignetteBuilder: knitr
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)

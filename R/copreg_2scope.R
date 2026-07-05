@@ -4,10 +4,16 @@
 #' Yang et al. (2025).
 #'
 #' @inheritParams CopRegPG
-#' @return An object of class `endog_copula_fit`.
+#' @inherit CopRegPG return
 #' @references Yang, F., Y. Qian, and H. Xie (2025). Addressing endogeneity
 #'   using a two-stage copula generated regressor approach. *Journal of
 #'   Marketing Research* 62(4), 601–623.
+#' @examples
+#' data(sim_endog)
+#'
+#' fit <- CopReg2sCOPE(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+#'                     cdf = "resc.ecdf", nboots = 0)
+#' summary(fit)
 #' @export
 CopReg2sCOPE <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj.ecdf"),
                          nboots = 199) {
@@ -29,22 +35,17 @@ CopReg2sCOPE <- function(formula, data, cdf = c("kde", "ecdf", "resc.ecdf", "adj
   boot_mat <- NULL
   if (nboots > 0) {
     message("Computing bootstrap standard errors (this may take a while)...")
-    k <- nrow(fit$coefficients)
-    boot_res <- vapply(
-      seq_len(nboots),
-      function(i) {
-        boot_data <- bootstrap_sample(cleaned)
-        res <- scope_fit(boot_data, components, formula, cdf)
-        res$coefficients[, 1]
-      },
-      numeric(k)
+    expected_names <- rownames(fit$coefficients)
+    fit_fun <- function(boot_data) {
+      res <- scope_fit(boot_data, components, formula, cdf)
+      res$coefficients[, 1]
+    }
+    boot_mat <- bootstrap_estimates(cleaned, fit_fun, nboots, expected_names)
+    ses <- apply(boot_mat, 2, stats::sd)
+    fit$coefficients <- cbind(
+      Estimate = fit$coefficients[, 1],
+      `Std. Error` = ses[expected_names]
     )
-    rownames(boot_res) <- rownames(fit$coefficients)
-    boot_mat <- t(boot_res)
-    colnames(boot_mat) <- rownames(fit$coefficients)
-    ses <- apply(boot_res, 1, stats::sd)
-    ses <- ses[rownames(fit$coefficients)]
-    fit$coefficients <- cbind(Estimate = fit$coefficients[, 1], `Std. Error` = ses)
   }
 
   make_result(
@@ -74,10 +75,8 @@ scope_fit <- function(data, components, original_formula, cdf) {
     fit <- safe_lm(lm_formula, estimation_df)
 
     estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    coef_names <- intersect(names(beta), colnames(design_info$design_matrix))
-    X_beta <- design_info$design_matrix[, coef_names, drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta[coef_names])
+    beta <- estimates[!grepl("_cop", names(estimates))]
+    fitted <- as.numeric(design_info$design_matrix %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)
     rownames(coeff_mat) <- names(estimates)
@@ -112,9 +111,8 @@ scope_fit <- function(data, components, original_formula, cdf) {
     fit <- safe_lm(lm_formula, estimation_df)
 
     estimates <- stats::coef(fit)
-    beta <- estimates[!grepl("_cop$", names(estimates))]
-    X_beta <- design_info$design_matrix[, names(beta), drop = FALSE]
-    fitted <- as.numeric(X_beta %*% beta)
+    beta <- estimates[!grepl("_cop", names(estimates))]
+    fitted <- as.numeric(design_matrix %*% beta)
     residuals <- estimation_matrix[, response] - fitted
     coeff_mat <- matrix(estimates, ncol = 1)
     rownames(coeff_mat) <- names(estimates)

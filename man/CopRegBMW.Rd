@@ -2,7 +2,7 @@
 % Please edit documentation in R/copreg_bmw.R
 \name{CopRegBMW}
 \alias{CopRegBMW}
-\title{Copula Regression: Breitung, Meyer, and Wied (2024)}
+\title{Copula Regression: Breitung, Mayer, and Wied (2024)}
 \usage{
 CopRegBMW(
   formula,
@@ -26,15 +26,40 @@ estimator. One of \code{"kde"}, \code{"ecdf"}, \code{"resc.ecdf"}, or \code{"adj
 errors. Set to zero to skip bootstrapping.}
 }
 \value{
-An object of class \code{endog_copula_fit}.
+An object of class \code{endog_copula_fit}: a list with components
+\describe{
+\item{\code{call}}{The matched call.}
+\item{\code{method}}{Character string identifying the estimator.}
+\item{\code{cdf}}{The CDF estimator used for the copula transformation.}
+\item{\code{coefficients}}{Matrix of coefficient estimates with an
+\code{Estimate} column and, when \code{nboots > 0}, a \verb{Std. Error} column
+computed from the bootstrap replicates.}
+\item{\code{residuals}}{Numeric vector of residuals from the structural
+part of the model (copula control terms excluded).}
+\item{\code{bootstrap}}{Matrix of bootstrap coefficient replicates, or
+\code{NULL} when \code{nboots = 0}.}
+}
+Objects of this class support \code{\link[=print]{print()}}, \code{\link[=summary]{summary()}}, \code{\link[=coef]{coef()}},
+\code{\link[=residuals]{residuals()}}, and \code{\link[=confint]{confint()}}.
 }
 \description{
-Implements the estimator proposed by Breitung, Meyer, and Wied (2024) that
+Implements the estimator proposed by Breitung, Mayer, and Wied (2024) that
 combines classical first-stage regressions with copula-based control
-functions.
+functions. With exogenous regressors, each endogenous regressor is first
+regressed on the exogenous ones and the copula control function is built
+from the CDF-transformed (and normal-quantile mapped) first-stage
+residuals. Without exogenous regressors the CDF-transformed endogenous
+regressors enter the control-function regression directly.
+}
+\examples{
+data(sim_endog)
+
+fit <- CopRegBMW(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+                 cdf = "resc.ecdf", nboots = 0)
+summary(fit)
 }
 \references{
-Breitung, J., A. Meyer, and D. Wied (2024). Asymptotic properties
+Breitung, J., A. Mayer, and D. Wied (2024). Asymptotic properties
 of endogeneity corrections using nonlinear transformations. \emph{The
 Econometrics Journal} 27 (3), 362–383.
 }

@@ -30,9 +30,22 @@ CopRegML_par(
 \item{method}{Optimisation method passed to \code{stats::optim()}.}
 }
 \value{
-Delegates to \code{endogCopulaPanel::CopRegML_par()}.
+The fitted panel model as returned by
+\code{endogCopulaPanel::CopRegML_par()}: maximum likelihood coefficient
+estimates for the fixed-effects copula panel model together with
+bootstrap standard errors when \code{nboots > 0}. See the documentation in
+the \code{endogCopulaPanel} package for the full structure.
 }
 \description{
 Thin wrapper around \code{endogCopulaPanel::CopRegML_par()}. The function is only
 available when the optional \code{endogCopulaPanel} package is installed.
+}
+\examples{
+\dontrun{
+# Requires the optional 'endogCopulaPanel' package and panel data with
+# numeric id and time variables:
+fit <- CopRegML_par(y ~ z_endog | x_exog + as.factor(year),
+                    index = c("id", "year"), data = panel_data,
+                    nboots = 199)
+}
 }

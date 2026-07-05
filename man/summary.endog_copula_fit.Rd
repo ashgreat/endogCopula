@@ -11,6 +11,19 @@
 
 \item{...}{Passed to downstream methods.}
 }
+\value{
+An object of class \code{summary.endog_copula_fit}: a list carrying the
+original \code{call}, \code{method}, \code{cdf}, and \code{coefficients}, plus a
+\code{coefficient_table} with z statistics and p-values (or \code{NULL} when no
+bootstrap standard errors are available), the \code{residuals}, the matrix of
+\code{bootstrap} replicates, and the number of bootstrap draws \code{nboots}.
+}
 \description{
 Summary method for \code{endog_copula_fit}
+}
+\examples{
+data(sim_endog)
+fit <- CopRegPG(y ~ z_endog | x_exog + w_instr, data = sim_endog,
+                cdf = "resc.ecdf", nboots = 0)
+summary(fit)
 }
